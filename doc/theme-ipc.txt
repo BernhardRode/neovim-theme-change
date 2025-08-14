@@ -1,0 +1,273 @@
+*theme-ipc.txt*    Dynamic theme switching for Neovim via IPC
+
+Author: Your Name
+License: MIT
+Version: 1.0.0
+
+==============================================================================
+CONTENTS                                                    *theme-ipc-contents*
+
+1. Introduction ............................ |theme-ipc-introduction|
+2. Installation ............................ |theme-ipc-installation|
+3. Configuration ........................... |theme-ipc-configuration|
+4. Commands ................................ |theme-ipc-commands|
+5. Lua API ................................. |theme-ipc-lua-api|
+6. External Clients ........................ |theme-ipc-external-clients|
+7. Integration Examples .................... |theme-ipc-integration|
+8. Troubleshooting ......................... |theme-ipc-troubleshooting|
+
+==============================================================================
+1. INTRODUCTION                                         *theme-ipc-introduction*
+
+nvim-theme-ipc enables dynamic theme switching for Neovim from external
+applications, scripts, or system events using Inter-Process Communication
+(IPC) via Unix domain sockets.
+
+Features:
+- Change themes from outside Neovim
+- Real-time theme switching via IPC
+- JSON-based command protocol
+- Secure local socket communication
+- Easy integration with system automation
+- List and validate available themes
+- Lightweight and fast
+
+Requirements:
+- Neovim 0.7+
+- Unix-like system (Linux, macOS, WSL)
+
+==============================================================================
+2. INSTALLATION                                         *theme-ipc-installation*
+
+Using lazy.nvim: >
+    {
+      "your-username/nvim-theme-ipc",
+      config = function()
+        require("theme-ipc").setup()
+      end
+    }
+<
+
+Using packer.nvim: >
+    use {
+      "your-username/nvim-theme-ipc",
+      config = function()
+        require("theme-ipc").setup()
+      end
+    }
+<
+
+Using vim-plug: >
+    Plug 'your-username/nvim-theme-ipc'
+<
+
+Then in your init.lua: >
+    require("theme-ipc").setup()
+<
+
+==============================================================================
+3. CONFIGURATION                                       *theme-ipc-configuration*
+
+Default configuration: >
+    require("theme-ipc").setup({
+      -- Auto-start server when Neovim starts
+      auto_start = true,
+      
+      -- Socket path (default: /tmp/nvim_theme_{pid})
+      socket_path = nil,
+      
+      -- Enable debug logging
+      debug = false,
+      
+      -- Allowed actions (security)
+      allowed_actions = {
+        "set_theme",
+        "get_theme", 
+        "list_themes",
+        "reload_config"
+      }
+    })
+<
+
+Configuration options:
+
+*theme-ipc-config-auto_start*
+auto_start (boolean, default: true)
+    Automatically start the IPC server when Neovim starts.
+
+*theme-ipc-config-socket_path*
+socket_path (string, default: nil)
+    Custom socket path. If nil, uses /tmp/nvim_theme_{pid}.
+
+*theme-ipc-config-debug*
+debug (boolean, default: false)
+    Enable debug logging for troubleshooting.
+
+*theme-ipc-config-allowed_actions*
+allowed_actions (table, default: see above)
+    List of allowed IPC actions for security.
+
+==============================================================================
+4. COMMANDS                                                 *theme-ipc-commands*
+
+*:ThemeIPCStart*
+    Start the IPC server manually.
+
+*:ThemeIPCStop*
+    Stop the IPC server.
+
+*:ThemeIPCStatus*
+    Show current server status including socket path and client count.
+
+*:ThemeIPCReload*
+    Reload the IPC server (stop and start).
+
+==============================================================================
+5. LUA API                                                   *theme-ipc-lua-api*
+
+*theme-ipc.setup()*
+theme-ipc.setup({config})
+    Initialize the plugin with optional configuration.
+
+*theme-ipc.start_server()*
+theme-ipc.start_server()
+    Start the IPC server. Returns true on success.
+
+*theme-ipc.stop_server()*
+theme-ipc.stop_server()
+    Stop the IPC server.
+
+*theme-ipc.is_running()*
+theme-ipc.is_running()
+    Check if the server is running. Returns boolean.
+
+*theme-ipc.get_socket_path()*
+theme-ipc.get_socket_path()
+    Get the current socket path. Returns string or nil.
+
+*theme-ipc.get_status()*
+theme-ipc.get_status()
+    Get detailed server status. Returns table with:
+    - running: boolean
+    - socket_path: string
+    - client_count: number
+    - config: table
+
+==============================================================================
+6. EXTERNAL CLIENTS                                 *theme-ipc-external-clients*
+
+The plugin includes command-line clients for external control:
+
+Bash client: >
+    nvim-theme set tokyonight    # Change theme
+    nvim-theme get               # Get current theme
+    nvim-theme list              # List available themes
+    nvim-theme status            # Check server status
+    nvim-theme reload            # Reload Neovim config
+<
+
+Python client: >
+    python3 nvim-theme.py set gruvbox
+    python3 nvim-theme.py list
+<
+
+JSON Protocol:
+All commands use JSON format over Unix domain socket:
+
+Set theme: >
+    {"action": "set_theme", "theme": "tokyonight"}
+<
+
+Get current theme: >
+    {"action": "get_theme"}
+<
+
+List themes: >
+    {"action": "list_themes"}
+<
+
+Reload config: >
+    {"action": "reload_config"}
+<
+
+Response format:
+Success: >
+    {"success": true, "theme": "tokyonight"}
+    {"current_theme": "gruvbox"}
+    {"themes": ["default", "blue", "darkblue", ...]}
+<
+
+Error: >
+    {"error": "Theme not found: invalid_theme"}
+<
+
+==============================================================================
+7. INTEGRATION EXAMPLES                                 *theme-ipc-integration*
+
+System Dark/Light Mode: >
+    #!/bin/bash
+    if [ "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'Adwaita-dark'" ]; then
+        nvim-theme set tokyonight
+    else  
+        nvim-theme set github_light
+    fi
+<
+
+Tmux Integration: >
+    # In tmux.conf
+    bind-key C-d run-shell "nvim-theme set tokyonight"
+    bind-key C-l run-shell "nvim-theme set github_light"
+<
+
+Cron Job (time-based themes): >
+    # Switch to dark theme at 6 PM
+    0 18 * * * /usr/local/bin/nvim-theme set tokyonight
+    # Switch to light theme at 8 AM  
+    0 8 * * * /usr/local/bin/nvim-theme set github_light
+<
+
+Desktop Environment:
+Create desktop shortcuts or bind to system hotkeys for instant theme switching.
+
+==============================================================================
+8. TROUBLESHOOTING                                   *theme-ipc-troubleshooting*
+
+Common Issues:
+
+*theme-ipc-troubleshooting-server-not-running*
+"Server not running" error:
+- Check if Neovim is running with the plugin loaded
+- Verify auto_start is enabled in configuration
+- Manually start with :ThemeIPCStart
+
+*theme-ipc-troubleshooting-socket-not-found*
+"Socket not found" error:
+- Check if socket file exists: ~/.cache/nvim/theme_socket
+- Verify socket path permissions
+- Try restarting the server with :ThemeIPCReload
+
+*theme-ipc-troubleshooting-permission-denied*
+Permission denied:
+- Check socket file permissions
+- Ensure cache directory is writable
+- Try custom socket_path in configuration
+
+*theme-ipc-troubleshooting-theme-not-found*
+"Theme not found" error:
+- List available themes with nvim-theme list
+- Verify theme is installed and available
+- Check theme name spelling
+
+Debug Mode:
+Enable debug logging in configuration: >
+    require("theme-ipc").setup({
+      debug = true
+    })
+<
+
+Check server status: >
+    :ThemeIPCStatus
+<
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

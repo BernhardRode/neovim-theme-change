@@ -1,0 +1,206 @@
+#!/bin/bash
+# nvim-theme - Command-line client for nvim-theme-ipc plugin
+
+set -euo pipefail
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/nvim"
+SOCKET_FILE="$CACHE_DIR/theme_socket"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+error() {
+    echo -e "${RED}Error:${NC} $1" >&2
+    exit 1
+}
+
+success() {
+    echo -e "${GREEN}$1${NC}"
+}
+
+warning() {
+    echo -e "${YELLOW}Warning:${NC} $1" >&2
+}
+
+# Check dependencies
+check_deps() {
+    if ! command -v socat >/dev/null 2>&1; then
+        error "socat is required but not installed. Please install it first."
+    fi
+}
+
+# Get socket path
+get_socket_path() {
+    if [ ! -f "$SOCKET_FILE" ]; then
+        error "Neovim theme server not running or socket file not found at $SOCKET_FILE"
+    fi
+    
+    local socket_path
+    socket_path=$(cat "$SOCKET_FILE")
+    
+    if [ ! -S "$socket_path" ]; then
+        error "Socket $socket_path does not exist"
+    fi
+    
+    echo "$socket_path"
+}
+
+# Send command to Neovim
+send_command() {
+    local command="$1"
+    local socket_path
+    socket_path=$(get_socket_path)
+    
+    echo "$command" | socat - UNIX-CONNECT:"$socket_path" 2>/dev/null || {
+        error "Failed to communicate with Neovim theme server"
+    }
+}
+
+# Parse JSON response (fallback if jq not available)
+parse_json() {
+    local json="$1"
+    local key="$2"
+    
+    if command -v jq >/dev/null 2>&1; then
+        echo "$json" | jq -r ".$key // empty"
+    else
+        # Simple fallback parsing
+        echo "$json" | sed -n "s/.*\"$key\":\s*\"\([^\"]*\)\".*/\1/p"
+    fi
+}
+
+# Format JSON response
+format_response() {
+    local response="$1"
+    local action="$2"
+    
+    if command -v jq >/dev/null 2>&1; then
+        case "$action" in
+            "set")
+                echo "$response" | jq -r 'if .success then "Theme changed to: " + .theme else "Error: " + .error end'
+                ;;
+            "get")
+                echo "$response" | jq -r '.current_theme // .error'
+                ;;
+            "list")
+                echo "$response" | jq -r '.themes[]? // .error'
+                ;;
+            "reload")
+                echo "$response" | jq -r 'if .success then .message else "Error: " + .error end'
+                ;;
+            *)
+                echo "$response" | jq -r '. | if .error then "Error: " + .error else . end'
+                ;;
+        esac
+    else
+        echo "$response"
+    fi
+}
+
+# Show usage
+usage() {
+    cat << EOF
+nvim-theme - Control Neovim themes from command line
+
+Usage: nvim-theme <command> [arguments]
+
+Commands:
+  set <theme>     Change to specified theme
+  get             Get current theme name  
+  list            List available themes
+  reload          Reload Neovim configuration
+  status          Check server status
+  help            Show this help message
+
+Examples:
+  nvim-theme set tokyonight
+  nvim-theme get
+  nvim-theme list
+  nvim-theme status
+
+Requirements:
+  - Neovim with nvim-theme-ipc plugin loaded
+  - socat (for socket communication)
+  - jq (optional, for better JSON parsing)
+EOF
+}
+
+# Main command handling
+main() {
+    if [ $# -eq 0 ]; then
+        usage
+        exit 1
+    fi
+    
+    local command="$1"
+    shift
+    
+    case "$command" in
+        "set"|"change")
+            if [ $# -eq 0 ]; then
+                error "Theme name required. Usage: nvim-theme set <theme_name>"
+            fi
+            check_deps
+            local theme="$1"
+            local result
+            result=$(send_command "{\"action\":\"set_theme\",\"theme\":\"$theme\"}")
+            format_response "$result" "set"
+            ;;
+        
+        "get"|"current")
+            check_deps
+            local result
+            result=$(send_command '{"action":"get_theme"}')
+            format_response "$result" "get"
+            ;;
+        
+        "list"|"available")
+            check_deps
+            local result
+            result=$(send_command '{"action":"list_themes"}')
+            format_response "$result" "list"
+            ;;
+        
+        "reload")
+            check_deps
+            local result
+            result=$(send_command '{"action":"reload_config"}')
+            format_response "$result" "reload"
+            ;;
+        
+        "status")
+            if [ -f "$SOCKET_FILE" ]; then
+                local socket_path
+                socket_path=$(cat "$SOCKET_FILE")
+                if [ -S "$socket_path" ]; then
+                    success "Neovim theme server is running"
+                    echo "Socket: $socket_path"
+                    if command -v socat >/dev/null 2>&1; then
+                        local current
+                        current=$(send_command '{"action":"get_theme"}' | parse_json - "current_theme")
+                        if [ -n "$current" ]; then
+                            echo "Current theme: $current"
+                        fi
+                    fi
+                else
+                    warning "Socket file exists but socket is not active"
+                fi
+            else
+                warning "Neovim theme server is not running"
+            fi
+            ;;
+        
+        "help"|"-h"|"--help")
+            usage
+            ;;
+        
+        *)
+            error "Unknown command: $command. Use 'nvim-theme help' for usage information."
+            ;;
+    esac
+}
+
+main "$@"

@@ -1,0 +1,26 @@
+# Compiled files
+*.pyc
+__pycache__/
+
+# Package files
+*.tar.gz
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test files
+test_output/
+*.log
+
+# Local development
+.env
+.local/
