@@ -53,7 +53,7 @@ local function is_action_allowed(action)
   return vim.tbl_contains(state.config.allowed_actions, action)
 end
 
--- Command handlers
+-- Command handlers (these will be called in vim.schedule context)
 local function handle_set_theme(params)
   if not params.theme then
     return {error = "Theme name required"}
@@ -131,9 +131,25 @@ local function handle_client(client)
     end
     
     if data then
-      local response = handle_command(data:gsub("%s+$", ""))
-      local json_response = vim.json.encode(response)
-      client:write(json_response .. "\n")
+      -- Use vim.schedule to handle the command in the main event loop
+      -- This ensures we're not in a "fast event context"
+      vim.schedule(function()
+        local success, response = pcall(handle_command, data:gsub("%s+$", ""))
+        if not success then
+          response = {error = "Internal error: " .. tostring(response)}
+        end
+        
+        local json_response = vim.json.encode(response)
+        
+        -- Check if client is still valid before writing
+        if not client:is_closing() then
+          client:write(json_response .. "\n", function(write_err)
+            if write_err then
+              log("Client write error: " .. tostring(write_err), vim.log.levels.ERROR)
+            end
+          end)
+        end
+      end)
     else
       -- Client disconnected
       client:close()
@@ -145,6 +161,11 @@ local function handle_client(client)
       end
       log("Client disconnected")
     end
+  end)
+  
+  -- Handle client errors
+  client:on('error', function(client_err)
+    log("Client error: " .. tostring(client_err), vim.log.levels.ERROR)
   end)
 end
 

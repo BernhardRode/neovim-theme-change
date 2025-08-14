@@ -161,6 +161,25 @@ All commands use JSON format over Unix domain socket:
 {"error": "Theme not found: invalid_theme"}
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+**"Vimscript function must not be called in a fast event context" error:**
+- This has been fixed in the latest version by using `vim.schedule()`
+- Make sure you're using the updated plugin code
+- If you still see this error, try restarting Neovim
+
+**Server not starting:**
+- Check if the socket path is writable
+- Verify no other instance is using the same socket
+- Try `:ThemeIPCStatus` to check server state
+
+**Client connection issues:**
+- Ensure Neovim is running with the plugin loaded
+- Check that the socket file exists: `~/.cache/nvim/theme_socket`
+- Verify socket permissions and accessibility
+
 ## Requirements
 
 - Neovim 0.7+
